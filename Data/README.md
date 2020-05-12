@@ -1,12 +1,12 @@
 # About the data
 
-Source:
+### Source:
 
 Georges Hebrail (georges.hebrail '@' edf.fr), Senior Researcher, EDF R&D, Clamart, France
 Alice Berard, TELECOM ParisTech Master of Engineering Internship at EDF R&D, Clamart, France
 
 
-Data Set Information:
+### Data Set Information:
 
 This archive contains 2075259 measurements gathered in a house located in Sceaux (7km of Paris, France) between December 2006 and November 2010 (47 months).
 Notes:
@@ -14,7 +14,7 @@ Notes:
 2.The dataset contains some missing values in the measurements (nearly 1,25% of the rows). All calendar timestamps are present in the dataset but for some timestamps, the measurement values are missing: a missing value is represented by the absence of value between two consecutive semi-colon attribute separators. For instance, the dataset shows missing values on April 28, 2007.
 
 
-Attribute Information:
+### Attribute Information:
 
 1.date: Date in format dd/mm/yyyy
 2.time: time in format hh:mm:ss
