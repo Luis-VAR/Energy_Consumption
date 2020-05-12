@@ -1,32 +1,305 @@
 ---
-title: "Energy_Consuption"
+title: "Energy_Consumption"
 author: "Luis Varela"
-date: "10 5 2020"
+date: "7 01 2020"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
 
+```{r, warning=FALSE, message=FALSE}
+library(RMySQL)     #for the SQL queries
+library(DBI)        #necessary for the RMySQL library
+library(ggplot2)    #graph library
+library(plotly)     #this one is better for the line graphs
+library(knitr)      #for the tables aes
+library(magrittr)   #magic %>% 
+library(dplyr)      #data wrangling
+library(lubridate)  #convert date and time
+library(grid)       #formating the ggplot graphics
 ```
 
-## R Markdown
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
-
+```{r, include=FALSE}
+hooks = knitr::knit_hooks$get()
+hook_foldable = function(type) {
+  force(type)
+  function(x, options) {
+    res = hooks[[type]](x, options)
+    
+    if (isFALSE(options[[paste0("fold.", type)]])) return(res)
+    
+    paste0(
+      "<details><summary>", type, "</summary>\n\n",
+      res,
+      "\n\n</details>"
+    )
+  }
+}
+knitr::knit_hooks$set(
+  output = hook_foldable("output"),
+  plot = hook_foldable("plot")
+)
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
+```{r, warning=FALSE, message=FALSE}
+#Importing the data, create a database connection
+con <- dbConnect(MySQL(),
+                 user = 'deepAnalytics',
+                 password = 'Sqltask1234!',
+                 dbname = 'dataanalytics2018',
+                 host = 'data-analytics-2018.cbrosir2cswx.us-east-1.rds.amazonaws.com')
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+#List the tables contained in the database 
+dbListTables(con)
+
+#quick check of attributes listed in one of the lists, I kow beforehand they all, except one, contain the same attributes
+dbListFields(con, 'yr_2006')
+
+#save all df locally with all the info in them
+yr2006_local <- dbGetQuery(con, "SELECT * FROM yr_2006")
+write.csv(yr2006_local, file = "Data/yr2006_local")
+
+yr2007_local <- dbGetQuery(con, "SELECT * FROM yr_2007")
+write.csv(yr2007_local, file = "Data/yr2007_local")
+
+yr2008_local <- dbGetQuery(con, "SELECT * FROM yr_2008")
+write.csv(yr2008_local, file = "Data/yr2008_local")
+
+yr2009_local <- dbGetQuery(con, "SELECT * FROM yr_2009")
+write.csv(yr2009_local, file = "Data/yr2009_local")
+
+yr2010_local <- dbGetQuery(con, "SELECT * FROM yr_2010")
+write.csv(yr2010_local, file = "Data/yr2010_local")
+
+#for the analysis I need to implement, only 5 attributes are relevant, Time, Date, Global_active_power and the 3 Sub_metering
+yr_2006 <- select(yr2006_local, Date, Time, Sub_metering_1, Sub_metering_2, Sub_metering_3, Global_active_power)
+  
+yr_2007 <- select(yr2007_local, Date, Time, Sub_metering_1, Sub_metering_2, Sub_metering_3, Global_active_power)
+
+yr_2008 <- select(yr2008_local, Date, Time, Sub_metering_1, Sub_metering_2, Sub_metering_3, Global_active_power)
+
+yr_2009 <- select(yr2009_local, Date, Time, Sub_metering_1, Sub_metering_2, Sub_metering_3, Global_active_power)
+  
+yr_2010 <- select(yr2010_local, Date, Time, Sub_metering_1, Sub_metering_2, Sub_metering_3, Global_active_power)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r, echo=FALSE, results='hide'}
+#disconnect from server
+dbDisconnect(con)
+```
+
+```{r, collapse=TRUE}
+#str() visualized as kable table
+x_str <- function(data){
+ data.frame(
+            variable = names(data),
+            class = sapply(data, typeof),
+            first_values = sapply(data, function(x) paste0(head(x), collapse = ", ")),
+            row.names = NULL) %>%
+            kable()
+}
+```
+
+
+## {.tabset .tabset-fade}
+
+### Year 2006
+```{r, fold.plot=FALSE}
+x_str(yr_2006)
+kable(summary(yr_2006))
+kable(head(yr_2006))
+```
+
+### Year 2007
+```{r, fold.plot=FALSE}
+x_str(yr_2007)
+kable(summary(yr_2007))
+kable(head(yr_2007))
+```
+
+### Year 2008
+```{r, fold.plot=FALSE}
+x_str(yr_2008)
+kable(summary(yr_2008))
+kable(head(yr_2008))
+```
+
+### Year 2009
+```{r, fold.plot=FALSE}
+x_str(yr_2009)
+kable(summary(yr_2009))
+kable(head(yr_2009))
+```
+
+### Year 2010
+```{r, fold.plot=FALSE}
+x_str(yr_2010)
+kable(summary(yr_2010))
+kable(head(yr_2010))
+```
+
+## {-}
+
+
+```{r, fold.plot=FALSE}
+#join the df that are complete and will be used for the analysis
+yr_07_08_09 <- bind_rows(yr_2007, yr_2008, yr_2009)
+
+#change the names of the columns
+names(yr_07_08_09)[names(yr_07_08_09) == "Sub_metering_1"] <- "Kitchen"
+names(yr_07_08_09)[names(yr_07_08_09) == "Sub_metering_2"] <- "Laundry_room"
+names(yr_07_08_09)[names(yr_07_08_09) == "Sub_metering_3"] <- "Water_heater"
+
+#changing the submeters to kw/h
+yr_07_08_09$Kitchen <- yr_07_08_09$Kitchen/1000
+yr_07_08_09$Laundry_room <- yr_07_08_09$Laundry_room/1000
+yr_07_08_09$Water_heater <- yr_07_08_09$Water_heater/1000
+kable(head(yr_07_08_09, n = 5))
+
+#change the reading to the same unit in the "Global_active_power" to kw/h, and take from the reading the sum of the other three sub meters
+yr_07_08_09$Rest_house <- round(yr_07_08_09$Global_active_power/60 - (yr_07_08_09$Kitchen + yr_07_08_09$Laundry_room + yr_07_08_09$Water_heater), 3)
+kable(head(yr_07_08_09))
+
+#combine date and time attributes in a new column
+yr_07_08_09$Date_time <- paste(yr_07_08_09$Date, yr_07_08_09$Time)
+
+#moving the column
+yr_07_08_09 <- yr_07_08_09[,c(ncol(yr_07_08_09), 1:(ncol(yr_07_08_09)-1))]
+```
+
+
+```{r}
+#convert Date_time to POSIXct
+yr_07_08_09$Date_time <- ymd_hms(yr_07_08_09$Date_time)
+yr_07_08_09$Time <- hms(yr_07_08_09$Time)
+yr_07_08_09$Date <- ymd(yr_07_08_09$Date)
+
+#add the time zone
+attr(yr_07_08_09$Date_time, "tzone") <- "Europe/Paris"
+
+## Inspect the data types
+x_str(yr_07_08_09)
+
+#create new columns for information mining
+yr_07_08_09$Year      <- year(yr_07_08_09$Date_time)
+yr_07_08_09$Quarter   <- quarter(yr_07_08_09$Date_time)
+yr_07_08_09$Weekday   <- wday(yr_07_08_09$Date_time)
+yr_07_08_09$Minute    <- minute(yr_07_08_09$Date_time)
+yr_07_08_09$Month     <- month(yr_07_08_09$Date_time)
+yr_07_08_09$Day       <- day(yr_07_08_09$Date_time)
+```
+
+
+```{r, include=FALSE}
+#theme for the ggplot below
+blank_theme <- theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.border = element_blank(),
+    panel.grid = element_blank(),
+    axis.ticks = element_blank(),
+    plot.title = element_text(size = 14, face = "bold")
+  )
+```
+
+
+```{r, out.width=c('50%', '50%'), fig.show='hold', warning=FALSE, message=FALSE, fold.plot=FALSE}
+#checking how much energy each submeter used in 2008 during the weekend and workdays
+submeters_consumption_08 <- yr_07_08_09 %>%
+                             filter(Year == 2008, Weekday == 1 & 2 & 3 & 4 & 5) %>%
+                             select(Kitchen, Laundry_room, Water_heater, Rest_house) %>% 
+                             summarise_all(funs(sum)) %>% 
+                             tidyr::gather(key = Area, value = KwH) %>% 
+                             mutate(Porcentage = round(KwH/sum(KwH) * 100, 2))
+
+#pie chart showing the porcentage of power used by each submeter in 2008
+ggplot(submeters_consumption_08, aes(x = "", y = KwH, fill = Area)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start = 0) +
+  scale_fill_brewer(palette = "Dark2") +
+  blank_theme +   #Previously created object, refer to RMD doc to see it
+  theme(axis.text.x = element_blank()) +
+#  theme(plot.margin = unit(c(0, -10, -10, -30), "mm")) +
+  geom_text(aes(label = Porcentage), position = position_stack(vjust = 0.5)) +
+  ggtitle("Sum of the Energy Consumption During all Weekdays in 2008")
+
+#checking how much energy each submeter used during the sum of the weekends of the year
+submeters_consumption_weekends <- yr_07_08_09 %>%
+                                   filter(Weekday == 6 & 7) %>%
+                                   select(Kitchen, Laundry_room, Water_heater, Rest_house) %>% 
+                                   summarise_all(funs(sum)) %>% 
+                                   tidyr::gather(key = Area, value = KwH) %>% 
+                                   mutate(Porcentage = round(KwH/sum(KwH) * 100, 2))
+
+#pie chart showing the porcentage of power used by each submeter in 2008
+ggplot(submeters_consumption_weekends, aes(x = "", y = KwH, fill = Area)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start = 0) +
+  scale_fill_brewer(palette = "Dark2") +
+  blank_theme +   #Previously created object, refer to RMD doc to see it
+  theme(axis.text.x = element_blank()) +
+#  theme(plot.margin = unit(c(0, -10, -10, -30), "mm")) +
+  geom_text(aes(label = Porcentage), position = position_stack(vjust = 0.5)) +
+  ggtitle("Sum of the Energy Consumption During All Weekends in 2008")
+
+#Note to self: quite the jump in hot water ussage during the weekends. People are more at home, that´d explain it.
+#overall ussage of energy is 6 times higher on the weekends than on the weekdays
+```
+
+
+## {.tabset .tabset-fade}
+
+### DAY
+```{r, fold.plot=FALSE, warning=FALSE, message=FALSE, fig.fullwidth = TRUE, fig.width=9.5}
+#plot of the mid summer week, friday 2009
+Fri_summer <- yr_07_08_09 %>% 
+                      filter(Year == 2009 & Month == 6 & Day == 26)
+
+plot_ly(Fri_summer, x = ~Date_time, y = ~Kitchen, name = 'Kitchen', type = 'scatter', mode = 'lines') %>%
+  add_trace(y = ~Laundry_room, mode = 'lines') %>%
+  add_trace(y = ~Water_heater, mode = 'lines') %>%
+  add_trace(y = ~Rest_house, mode = 'lines') %>%
+  layout(title = "Energy Consumption Mid-Summer Friday 26th of June 2009",
+         xaxis = list(title = "Time"),
+         yaxis = list (title = "KwH"))
+```
+
+### WEEK
+```{r, fold.plot=FALSE, warning=FALSE, message=FALSE, fig.fullwidth = TRUE, fig.width=9.5}
+#plot of the mid summer week of 2009
+Fri_summer <- yr_07_08_09 %>% 
+                  filter(Date_time > "2009-06-22" & Date_time < "2009-06-28")
+
+plot_ly(Fri_summer, x = ~Date_time, y = ~Kitchen, name = 'Kitchen', type = 'scatter', mode = 'lines') %>%
+  add_trace(y = ~Laundry_room, mode = 'lines') %>%
+  add_trace(y = ~Water_heater, mode = 'lines') %>%
+  add_trace(y = ~Rest_house, mode = 'lines') %>%
+  layout(title = "Energy Consumption Mid-Summer Week 2009",
+         xaxis = list(title = "Time"),
+         yaxis = list (title = "KwH"))
+```
+
+### MONTH
+```{r, fold.plot=FALSE, warning=FALSE, message=FALSE, fig.fullwidth = TRUE, fig.width=9.5}
+#plot of the mid summer week of 2009
+Jul_2009 <- yr_07_08_09 %>% 
+                  filter(Year == 2009 & Month == 7)
+
+plot_ly(Jul_2009, x = ~Date_time, y = ~Kitchen, name = 'Kitchen', type = 'scatter', mode = 'lines') %>%
+  add_trace(y = ~Laundry_room, mode = 'lines') %>%
+  add_trace(y = ~Water_heater, mode = 'lines') %>%
+  add_trace(y = ~Rest_house, mode = 'lines') %>%
+  layout(title = "Energy Consumption June 2009",
+         xaxis = list(title = "Time"),
+         yaxis = list (title = "KwH"))
+```
+
+## {-}
+
+
+```{r}
+#sesh info
+sessionInfo()
+```
